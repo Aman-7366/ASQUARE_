@@ -9,6 +9,11 @@ from checkout import create_order,confirm_razorpay,user_orders,order_items,total
 from admin import metrics,all_orders,set_order_status,set_product_active,create_coupon
 from admin_tools import file_to_data_uri,product_images,add_images,remove_images,update_product,variants_for,update_variant,add_variant
 import pandas as pd
+import os, hashlib, secrets, smtplib
+from datetime import datetime, timedelta, timezone
+from email.message import EmailMessage
+from auth import hash_password
+import streamlit.components.v1 as components
 
 st.set_page_config(page_title=f'{APP_NAME} | {TAGLINE}',page_icon='◼',layout='wide',initial_sidebar_state='expanded')
 init_db(); seed()
@@ -17,7 +22,79 @@ st.markdown('<div class="asq-announcement">THE NEW SEASON IS HERE · EXTRA 10% O
 if 'user' not in st.session_state: st.session_state.user=None
 if 'page' not in st.session_state: st.session_state.page='Home'
 if 'search' not in st.session_state: st.session_state.search=''
+if st.query_params.get('reset_token'):
+    st.session_state.reset_token = st.query_params.get('reset_token')
+    st.session_state.page = 'Reset Password'
 user=st.session_state.user
+
+
+def navigate(page):
+    st.session_state.page = page
+    st.session_state['_scroll_to_top'] = True
+    st.rerun()
+
+
+def _setting(name, default=''):
+    value = os.getenv(name)
+    if value:
+        return value
+    try:
+        return st.secrets.get(name, default)
+    except Exception:
+        return default
+
+
+def _send_reset_email(recipient, reset_url):
+    host = _setting('SMTP_HOST')
+    username = _setting('SMTP_USER')
+    password = _setting('SMTP_PASSWORD')
+    sender = _setting('SMTP_FROM', username)
+    port = int(_setting('SMTP_PORT', '587'))
+    if not all([host, username, password, sender]):
+        raise RuntimeError('Configure SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD and SMTP_FROM in deployment secrets.')
+    msg = EmailMessage()
+    msg['Subject'] = 'Reset your A SQUARE password'
+    msg['From'] = sender
+    msg['To'] = recipient
+    msg.set_content('We received a request to reset your A SQUARE password.\n\nUse this secure, single-use link within 30 minutes:\n' + reset_url + '\n\nIf you did not request this, ignore this email.')
+    with smtplib.SMTP(host, port, timeout=20) as server:
+        server.starttls()
+        server.login(username, password)
+        server.send_message(msg)
+
+
+def _create_reset_request(email):
+    email = email.strip().lower()
+    with get_db() as db:
+        db.execute('CREATE TABLE IF NOT EXISTS password_reset_tokens (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, token_hash TEXT NOT NULL UNIQUE, expires_at TEXT NOT NULL, used_at TEXT)')
+        account = db.execute('SELECT id,email FROM users WHERE email=? AND is_active=1', (email,)).fetchone()
+        if not account:
+            return
+        raw_token = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+        now = datetime.now(timezone.utc).isoformat()
+        expires = (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat()
+        db.execute('UPDATE password_reset_tokens SET used_at=? WHERE user_id=? AND used_at IS NULL', (now, account['id']))
+        db.execute('INSERT INTO password_reset_tokens(user_id,token_hash,expires_at) VALUES(?,?,?)', (account['id'], token_hash, expires))
+    base_url = _setting('APP_BASE_URL', '').rstrip('/')
+    if not base_url:
+        raise RuntimeError('Set APP_BASE_URL to your deployed A SQUARE URL in deployment secrets.')
+    _send_reset_email(account['email'], base_url + '/?reset_token=' + raw_token)
+
+
+def _complete_password_reset(raw_token, new_password):
+    if len(new_password) < 10:
+        raise ValueError('Password must contain at least 10 characters.')
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    now = datetime.now(timezone.utc).isoformat()
+    encoded = hash_password(new_password)
+    with get_db() as db:
+        row = db.execute('SELECT id,user_id FROM password_reset_tokens WHERE token_hash=? AND used_at IS NULL AND expires_at>?', (token_hash, now)).fetchone()
+        if not row:
+            raise ValueError('This reset link is invalid, expired or already used. Request a new one.')
+        db.execute('UPDATE users SET password_hash=? WHERE id=?', (encoded, row['user_id']))
+        db.execute('UPDATE password_reset_tokens SET used_at=? WHERE user_id=? AND used_at IS NULL', (now, row['user_id']))
+
 
 def uget(key,default=''):
     try: return user[key] or default
@@ -30,7 +107,7 @@ with h2:
     with st.container(key='logo_home'):
         st.markdown(f'<div class="asq-logo">{logo_svg}</div>',unsafe_allow_html=True)
         if st.button('Home',key='logo_btn'):
-            st.session_state.page='Home'; st.rerun()
+            navigate('Home')
 with h3:
     with st.container(key='acct_in' if user else 'acct_out'):
         label=str(uget('name','U'))[:1].upper() if user else '👤'
@@ -38,37 +115,37 @@ with h3:
             if user:
                 st.markdown(f"**{uget('name')}**")
                 if uget('email'): st.caption(uget('email'))
-                if st.button('My account',key='pop_account',use_container_width=True): st.session_state.page='Account'; st.rerun()
-                if st.button('My orders',key='pop_orders',use_container_width=True): st.session_state.page='My Orders'; st.rerun()
-                if st.button('Wishlist',key='pop_wishlist',use_container_width=True): st.session_state.page='Wishlist'; st.rerun()
-                if uget('role')=='admin' and st.button('Admin dashboard',key='pop_admin',use_container_width=True): st.session_state.page='Admin'; st.rerun()
-                if st.button('Log out',key='pop_logout',use_container_width=True): st.session_state.user=None; st.session_state.page='Home'; st.rerun()
+                if st.button('My account',key='pop_account',use_container_width=True): navigate('Account')
+                if st.button('My orders',key='pop_orders',use_container_width=True): navigate('My Orders')
+                if st.button('Wishlist',key='pop_wishlist',use_container_width=True): navigate('Wishlist')
+                if uget('role')=='admin' and st.button('Admin dashboard',key='pop_admin',use_container_width=True): navigate('Admin')
+                if st.button('Log out',key='pop_logout',use_container_width=True): st.session_state.user=None; navigate('Home')
             else:
                 st.markdown('**Welcome to A SQUARE**')
                 st.caption('Sign in to track orders and save favourites.')
-                if st.button('Login / Register',key='pop_login',use_container_width=True): st.session_state.page='Account'; st.rerun()
+                if st.button('Login / Register',key='pop_login',use_container_width=True): navigate('Account')
 
 with st.sidebar:
     st.markdown('## A SQUARE')
     st.caption('FASHION. STYLE. CONFIDENCE.')
     for page in ['Home','All Category','Men','Women','Kids','Footwear','Accessories','Wishlist','My Bag','My Orders','Account']:
-        if st.button(page,use_container_width=True,key='nav_'+page): st.session_state.page=page
+        if st.button(page,use_container_width=True,key='nav_'+page): navigate(page)
     st.divider()
     if user:
         st.write(f"Hello, **{user['name']}**")
-        if user['role']=='admin' and st.button('Admin dashboard',use_container_width=True): st.session_state.page='Admin'
-        if st.button('Log out',use_container_width=True): st.session_state.user=None; st.session_state.page='Home'; st.rerun()
+        if user['role']=='admin' and st.button('Admin dashboard',use_container_width=True): navigate('Admin')
+        if st.button('Log out',use_container_width=True): st.session_state.user=None; navigate('Home')
     else:
-        if st.button('Login / Register',use_container_width=True): st.session_state.page='Account'
+        if st.button('Login / Register',use_container_width=True): navigate('Account')
     st.caption('India · Prices in INR')
 
 bag_count=len(cart_items(user['id'])) if user else 0
 c1,c2,c3=st.columns([4,1,1])
 with c1: st.session_state.search=st.text_input('Search styles, brands and more',value=st.session_state.search,placeholder='Search the collection…',label_visibility='collapsed')
 with c2:
-    if st.button('♡ Wishlist',use_container_width=True): st.session_state.page='Wishlist'
+    if st.button('♡ Wishlist',use_container_width=True): navigate('Wishlist')
 with c3:
-    if st.button(f'Bag ({bag_count})',use_container_width=True): st.session_state.page='My Bag'
+    if st.button(f'Bag ({bag_count})',use_container_width=True): navigate('My Bag')
 
 # ---------- Top navigation bar (always visible, no sidebar needed) ----------
 NAV=['Home','All Category','Men','Women','Kids','Footwear','Accessories','My Orders']
@@ -76,8 +153,7 @@ if user and user['role']=='admin': NAV.append('Admin')
 nav_cols=st.columns(len(NAV))
 for col,pg in zip(nav_cols,NAV):
     if col.button(pg.upper(),key='top_'+pg,use_container_width=True):
-        st.session_state.page=pg
-        st.rerun()
+        navigate(pg)
 st.markdown('<div style="height:10px"></div>',unsafe_allow_html=True)
 
 
@@ -100,7 +176,7 @@ def product_grid(items,cols=4,prefix=''):
                 else: size=colour=None
                 a,b=st.columns(2)
                 with a:
-                    if st.button('View',key=f"{prefix}view_{p['id']}",use_container_width=True): st.session_state.selected_product=p['id']; st.session_state.page='Product'; st.rerun()
+                    if st.button('View',key=f"{prefix}view_{p['id']}",use_container_width=True): st.session_state.selected_product=p['id']; navigate('Product')
                 with b:
                     if st.button('♡',key=f"{prefix}wish_{p['id']}",use_container_width=True):
                         if not user: st.warning('Please log in to save favourites.')
@@ -203,6 +279,16 @@ def edit_product_panel(pid):
             except Exception as e: st.error(f'Could not save: {e}')
         if st.button('Close editor',key=f'close_{pid}'): st.session_state.edit_pid=None; st.rerun()
 
+if st.session_state.pop('_scroll_to_top', False):
+    components.html('''<script>
+      const w = window.parent;
+      w.requestAnimationFrame(() => {
+        w.scrollTo({top: 0, left: 0, behavior: 'auto'});
+        const main = w.document.querySelector('[data-testid="stAppViewContainer"]');
+        if (main) main.scrollTo({top: 0, left: 0, behavior: 'auto'});
+      });
+    </script>''', height=0, width=0)
+
 page=st.session_state.page
 if page=='Home':
     st.markdown('<div class="asq-hero"><div><div class="asq-kicker">A SQUARE · NEW SEASON 2026</div><h1>Style that speaks<br/>without saying a word.</h1><p>Thoughtful essentials. Confident everyday dressing.</p></div></div>',unsafe_allow_html=True)
@@ -210,7 +296,7 @@ if page=='Home':
     for col,(name,desc) in zip([x,y,z],[('MEN','Modern essentials'),('WOMEN','Effortless statements'),('KIDS','Made for little moments')]):
         with col:
             st.markdown(f'<div style="background:#e9e2d6;padding:28px;text-align:center"><div style="font:26px Playfair Display">{name}</div><div style="font-size:11px;letter-spacing:2px">{desc}</div></div>',unsafe_allow_html=True)
-            if st.button(f'EXPLORE {name}',key='explore'+name,use_container_width=True): st.session_state.page=name.title(); st.rerun()
+            if st.button(f'EXPLORE {name}',key='explore'+name,use_container_width=True): navigate(name.title())
     section('Trending now','The pieces everyone is reaching for.')
     product_grid(list_products(sort='Popularity')[:4],prefix='trend_')
     section('New arrivals','Fresh additions to your wardrobe.')
@@ -234,10 +320,10 @@ elif page=='Account' and user:
     st.markdown(f"**Account type:** {str(uget('role','customer')).title()}")
     st.write('')
     a,b,c,d=st.columns(4)
-    if a.button('MY ORDERS',key='acc_orders',use_container_width=True): st.session_state.page='My Orders'; st.rerun()
-    if b.button('WISHLIST',key='acc_wish',use_container_width=True): st.session_state.page='Wishlist'; st.rerun()
-    if c.button('MY BAG',key='acc_bag',use_container_width=True): st.session_state.page='My Bag'; st.rerun()
-    if d.button('LOG OUT',key='acc_logout',use_container_width=True): st.session_state.user=None; st.session_state.page='Home'; st.rerun()
+    if a.button('MY ORDERS',key='acc_orders',use_container_width=True): navigate('My Orders')
+    if b.button('WISHLIST',key='acc_wish',use_container_width=True): navigate('Wishlist')
+    if c.button('MY BAG',key='acc_bag',use_container_width=True): navigate('My Bag')
+    if d.button('LOG OUT',key='acc_logout',use_container_width=True): st.session_state.user=None; navigate('Home')
 elif page=='Account':
     section('Your A SQUARE account','Sign in for a more personal shopping experience.')
     tab1,tab2=st.tabs(['Login','Create account'])
@@ -248,12 +334,59 @@ elif page=='Account':
             found=login(email,password)
             if found: st.session_state.user=found; st.success('Welcome back.'); st.rerun()
             else: st.error('Email or password is incorrect.')
+        if st.button('Forgot password?', key='forgot_password_link'):
+            navigate('Forgot Password')
     with tab2:
         with st.form('register'):
             name=st.text_input('Full name'); em=st.text_input('Email address'); phone=st.text_input('Mobile number'); pw=st.text_input('Password (10+ characters)',type='password'); submit2=st.form_submit_button('CREATE ACCOUNT')
         if submit2:
             try: st.session_state.user=register(name,em,pw,phone); st.success('Account created.'); st.rerun()
             except Exception as e: st.error(str(e))
+elif page=='Forgot Password':
+    section('Forgot password', 'We will email you a secure link to choose a new password.')
+    with st.form('forgot_password_form'):
+        reset_email = st.text_input('Email address', placeholder='you@example.com')
+        request_reset = st.form_submit_button('SEND RESET LINK', use_container_width=True)
+    if request_reset:
+        if not reset_email.strip() or '@' not in reset_email:
+            st.error('Enter a valid email address.')
+        else:
+            try:
+                _create_reset_request(reset_email)
+                st.success('If an active A SQUARE account exists for that address, a password reset link has been sent. Check your inbox and spam folder.')
+            except Exception as e:
+                st.error(f'Unable to send the reset email: {e}')
+    if st.button('BACK TO LOGIN', key='forgot_back_login'):
+        navigate('Account')
+elif page=='Reset Password':
+    section('Choose a new password', 'Your reset link is single-use and expires after 30 minutes.')
+    raw_token = st.session_state.get('reset_token', '')
+    with st.form('reset_password_form'):
+        new_pw = st.text_input('New password (10+ characters)', type='password')
+        confirm_pw = st.text_input('Confirm new password', type='password')
+        save_password = st.form_submit_button('RESET PASSWORD', use_container_width=True)
+    if save_password:
+        if not raw_token:
+            st.error('Reset token is missing. Request a new password reset link.')
+        elif new_pw != confirm_pw:
+            st.error('The passwords do not match.')
+        else:
+            try:
+                _complete_password_reset(raw_token, new_pw)
+                st.session_state.pop('reset_token', None)
+                st.query_params.clear()
+                st.session_state.password_reset_success = True
+                st.rerun()
+            except Exception as e:
+                st.error(str(e))
+    if st.session_state.pop('password_reset_success', False):
+        st.success('Your password has been changed. You can now sign in.')
+        if st.button('GO TO LOGIN', key='reset_to_login'):
+            navigate('Account')
+    if st.button('REQUEST A NEW RESET LINK', key='reset_new_link'):
+        st.session_state.pop('reset_token', None)
+        st.query_params.clear()
+        navigate('Forgot Password')
 elif page=='Wishlist':
     section('Your wishlist')
     if not user: st.info('Log in to see your wishlist.')
@@ -273,7 +406,7 @@ elif page=='My Bag':
             coupon=st.text_input('Coupon code',placeholder='WELCOME10')
             subtotal,discount,delivery,total=totals(items,coupon)
             st.write(f'Subtotal: ₹{subtotal:,}'); st.write(f'Discount: −₹{discount:,}'); st.write(f'Delivery: ₹{delivery:,}'); st.markdown(f'## Total: ₹{total:,}')
-            if st.button('PROCEED TO CHECKOUT',use_container_width=True): st.session_state.coupon=coupon; st.session_state.page='Checkout'; st.rerun()
+            if st.button('PROCEED TO CHECKOUT',use_container_width=True): st.session_state.coupon=coupon; navigate('Checkout')
 elif page=='Checkout':
     section('Checkout','A few details and your order is on its way.')
     if not user: st.info('Please log in first.')
@@ -290,7 +423,7 @@ elif page=='Checkout':
             else:
                 try:
                     order=create_order(user['id'],{'name':name,'phone':phone,'line1':line1,'line2':line2,'city':city,'state':state,'pincode':pin},'Razorpay' if method.startswith('Razorpay') else 'COD',coupon or None)
-                    st.session_state.last_order=order; st.session_state.page='Order confirmation'; st.rerun()
+                    st.session_state.last_order=order; navigate('Order confirmation')
                 except Exception as e: st.error(f'Could not place order: {e}')
 elif page=='Order confirmation':
     order=st.session_state.get('last_order')
@@ -302,7 +435,7 @@ elif page=='Order confirmation':
             st.code(f"Razorpay Order ID: {rp['id']}\nKey ID: {RAZORPAY_KEY_ID}")
             st.caption('This starter project creates and verifies Razorpay orders server-side. Add the official Razorpay Checkout JS in a trusted custom component for a production payment UI.')
         else: st.info('Payment method: Cash on Delivery. Payment status: COD.')
-        if st.button('CONTINUE SHOPPING'): st.session_state.page='All Category'; st.rerun()
+        if st.button('CONTINUE SHOPPING'): navigate('All Category')
 elif page=='My Orders':
     section('Your orders','Every order, all in one place.')
     if not user: st.info('Log in to view orders.')
