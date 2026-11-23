@@ -1,0 +1,117 @@
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600&family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap');
+
+:root{--ink:#171715;--ivory:#f7f5f0;--sand:#e9e2d6;--gold:#b69a62;--muted:#77746d}
+
+.stApp{background:var(--ivory);color:var(--ink);font-family:'DM Sans',sans-serif}
+.block-container{max-width:1440px;padding-top:1.1rem;padding-bottom:3rem}
+
+/* ---------- Header / toolbar (keeps sidebar toggle working) ---------- */
+#MainMenu,footer{visibility:hidden}
+[data-testid="stHeader"]{background:transparent !important}
+[data-testid="stDecoration"]{display:none !important}
+
+[data-testid="stExpandSidebarButton"],
+[data-testid="stSidebarCollapsedControl"],
+[data-testid="collapsedControl"]{
+  display:flex !important;visibility:visible !important;opacity:1 !important;
+  z-index:999999;background:#171715 !important;border-radius:0
+}
+[data-testid="stExpandSidebarButton"] *,
+[data-testid="stSidebarCollapsedControl"] *,
+[data-testid="collapsedControl"] *{color:#f7f5f0 !important;fill:#f7f5f0 !important}
+
+/* ---------- Sidebar ---------- */
+[data-testid="stSidebar"]{background:#171715;color:#f7f5f0}
+[data-testid="stSidebar"] *{color:#f7f5f0}
+[data-testid="stSidebar"] .stButton>button{
+  background:transparent;border:1px solid #4a4a45;color:#f7f5f0;text-align:left
+}
+[data-testid="stSidebar"] .stButton>button:hover{
+  background:#b69a62;border-color:#b69a62;color:#171715
+}
+[data-testid="stSidebar"] .stButton>button:hover *{color:#171715}
+[data-testid="stSidebar"] hr{border-color:#3a3a36}
+
+/* ---------- Announcement + logo ---------- */
+.asq-announcement{background:#171715;color:#f5f1e8;text-align:center;padding:9px;font-size:11px;letter-spacing:2px;text-transform:uppercase;margin:-1rem -1rem 1.2rem}
+.asq-logo svg{width:min(100%,260px);height:auto;display:block;margin:5px auto 22px}
+.asq-brand{font-family:'Playfair Display',serif;font-size:36px;font-weight:700;letter-spacing:8px;text-align:center;margin:4px 0 0}
+.asq-tag{text-align:center;color:#81785f;font-size:10px;letter-spacing:4px;text-transform:uppercase;margin-bottom:22px}
+
+/* ---------- Hero ---------- */
+.asq-hero{min-height:360px;background:linear-gradient(90deg,rgba(0,0,0,.62),rgba(0,0,0,.05)),url('https://images.unsplash.com/photo-1483985988355-763728e1935b?w=1800') center/cover;border-radius:3px;display:flex;align-items:center;padding:48px;color:white;margin:14px 0 32px}
+.asq-hero h1{font-family:'Playfair Display',serif;font-size:clamp(36px,5vw,64px);line-height:1.04;max-width:550px;color:white}
+.asq-hero p{color:#f5f1e8}
+.asq-kicker{font-size:11px;letter-spacing:4px;text-transform:uppercase;color:#e4d1a6}
+
+/* ---------- Sections ---------- */
+.asq-section{font-family:'Playfair Display',serif;font-size:30px;margin:28px 0 6px}
+.asq-sub{color:var(--muted);font-size:13px;margin-bottom:18px}
+
+/* ---------- Product cards ---------- */
+.asq-card{background:#fff;border:1px solid #eee9e0;padding:10px;height:100%;transition:transform .2s,box-shadow .2s}
+.asq-card:hover{transform:translateY(-3px);box-shadow:0 10px 30px #00000012}
+.asq-card img{width:100%;height:250px;object-fit:cover;background:#eee}
+.asq-card h4{font-size:14px;margin:10px 0 2px;font-weight:600}
+.asq-price{font-size:15px;font-weight:700}
+.asq-mrp{color:#999;text-decoration:line-through;font-size:12px;margin-left:6px}
+.asq-off{color:#a27b39;font-size:11px;margin-left:6px}
+
+/* ---------- Buttons (main area + top navigation) ---------- */
+.stButton>button{border-radius:0;border:1px solid #171715;background:#171715;color:#fff;letter-spacing:1px;text-transform:uppercase;font-size:11px;min-height:40px;white-space:nowrap}
+.stButton>button:hover{background:#b69a62;border-color:#b69a62;color:#171715}
+.stButton>button:focus:not(:active){border-color:#b69a62;color:#fff}
+.stButton>button p{font-size:11px;letter-spacing:1px}
+[data-testid="stFormSubmitButton"]>button{border-radius:0;border:1px solid #171715;background:#171715;color:#fff;letter-spacing:1px;text-transform:uppercase;font-size:11px;min-height:40px}
+[data-testid="stFormSubmitButton"]>button:hover{background:#b69a62;border-color:#b69a62;color:#171715}
+
+/* ---------- Inputs ---------- */
+.stTextInput input,.stNumberInput input,.stSelectbox div[data-baseweb="select"]{border-radius:0;background:white;color:#171715}
+.stTabs [data-baseweb="tab"]{letter-spacing:1px;text-transform:uppercase;font-size:12px}
+.stTabs [aria-selected="true"]{color:#171715}
+hr{border-color:#e5dfd5}
+
+/* ---------- Footer ---------- */
+.asq-footer{background:#171715;color:#eee9df;padding:28px;margin-top:50px;text-align:center;font-size:12px;letter-spacing:1px}
+
+/* ---------- Clickable logo ---------- */
+.st-key-logo_home{position:relative}
+.st-key-logo_btn{position:absolute !important;inset:0;z-index:5;margin:0 !important}
+.st-key-logo_btn [data-testid="stButton"],
+.st-key-logo_btn button{width:100% !important;height:100% !important}
+.st-key-logo_btn button{opacity:0;cursor:pointer;background:transparent !important}
+
+/* ---------- Account circle icon (top right) ---------- */
+[class*="st-key-acct"]{display:flex;justify-content:flex-end}
+[class*="st-key-acct"] [data-testid="stPopover"]{width:auto !important}
+[class*="st-key-acct"] button{
+  position:relative !important;overflow:hidden;
+  width:58px !important;height:58px !important;min-width:58px !important;min-height:58px !important;
+  padding:0 !important;border-radius:50% !important;
+  background:#171715 !important;color:#fff !important;border:1.5px solid #171715 !important
+}
+/* hide the dropdown arrow and any other child; keep only the label */
+[class*="st-key-acct"] button svg,
+[class*="st-key-acct"] button [data-testid="stIconMaterial"]{display:none !important}
+/* pin the label to the exact centre of the circle */
+[class*="st-key-acct"] button [data-testid="stMarkdownContainer"]{
+  position:absolute !important;top:0;left:0;right:0;bottom:0;
+  display:flex !important;align-items:center;justify-content:center;
+  margin:0 !important;padding:0 !important;width:auto !important
+}
+[class*="st-key-acct"] button p{
+  margin:0 !important;padding:0 !important;text-align:center;
+  font-size:26px !important;font-weight:600;line-height:1 !important;letter-spacing:0 !important
+}
+[class*="st-key-acct"] button:hover{background:#b69a62 !important;border-color:#b69a62 !important;color:#171715 !important}
+/* logged-out state: light circle so the emoji is clearly visible */
+.st-key-acct_out button{background:#fff !important;color:#171715 !important;border-color:#171715 !important}
+.st-key-acct_out button:hover{background:#b69a62 !important;border-color:#b69a62 !important}
+
+/* ---------- Mobile ---------- */
+@media(max-width:700px){
+  .asq-hero{min-height:270px;padding:25px}
+  .asq-card img{height:180px}
+  .asq-brand{font-size:28px}
+  .stButton>button{font-size:10px;padding:0 4px}
+}
